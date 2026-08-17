@@ -1,0 +1,51 @@
+name: Build Kernel‑A d1xks (AOSP/Pixel GSI)
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile Kernel‑A
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo docker image prune -a -f
+
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v5
+        with:
+          repository: Star-Seven/android_kernel_samsung_exynos9820
+          path: kernel
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Get GCC 4.9 aarch64 Toolchain
+        run: git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-arm64
+
+      - name: Compile Kernel‑A (NO kernel‑level version spoof)
+        run: |
+          cd kernel
+          make O=out ARCH=arm64 exynos9820_d1xks_defconfig
+          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=$PWD/../gcc-arm64/bin/aarch64-linux-android-
+          cp out/arch/arm64/boot/Image.gz-dtb ../Image.gz-dtb_A
+
+      - name: Build boot.img with mkbootimg
+        run: |
+          sudo apt update && sudo apt install -y python3
+          git clone https://github.com/osm0sis/mkbootimg.git
+          cd mkbootimg
+          python3 mkbootimg.py \
+            --kernel ../Image.gz-dtb_A \
+            --base 0x10000000 \
+            --pagesize 2048 \
+            --kernel_offset 0x00008000 \
+            --ramdisk_offset 0x01000000 \
+            --tags_offset 0x00000100 \
+            -o ../boot-KernelA-d1xks.img
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-KernelA-d1xks
+          path: boot-KernelA-d1xks.img
